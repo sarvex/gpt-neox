@@ -144,7 +144,7 @@ class NeoXArgs(*BASE_CLASSES):
 
                 print("> setting tensorboard ...")
                 self.tensorboard_writer = SummaryWriter(log_dir=self.tensorboard_dir)
-            except (ModuleNotFoundError, ImportError):
+            except ImportError:
                 print(
                     "WARNING: TensorBoard writing requested but is not "
                     "available (are you using PyTorch 1.1.0 or later and do you have tensorboard installed?), "
@@ -162,11 +162,10 @@ class NeoXArgs(*BASE_CLASSES):
         overwrite_values: If provided, overwrite any values in the yamls with these values
         """
 
-        print(cls.__name__ + ".from_ymls() " + str(paths_to_yml_files), flush=True)
+        print(f"{cls.__name__}.from_ymls() {paths_to_yml_files}", flush=True)
 
-        # initialize an empty config dictionary to be filled by yamls
-        config = dict()
-        config_files = dict()
+        config_files = {}
+        config = {}
         # iterate of all to be loaded yaml files
         for conf_file_name in paths_to_yml_files:
 
@@ -204,8 +203,7 @@ class NeoXArgs(*BASE_CLASSES):
         )
         if len(params_not_in_config) > 0:
             logging.debug(
-                cls.__name__
-                + ".from_ymls() Configuration parameters not specified (using defaults): "
+                f"{cls.__name__}.from_ymls() Configuration parameters not specified (using defaults): "
                 + ", ".join(params_not_in_config)
             )
 
@@ -334,14 +332,13 @@ class NeoXArgs(*BASE_CLASSES):
             conf_files = [os.path.join(args_parsed.conf_dir, f) for f in conf_files]
 
         # enables us to pass in `small` instead of `small.yml`
-        conf_files = [(cf if cf.endswith(".yml") else cf + ".yml") for cf in conf_files]
+        conf_files = [cf if cf.endswith(".yml") else f"{cf}.yml" for cf in conf_files]
 
-        # determine overwrite values
-        overwrite_values = dict()
-        for k, v in vars(args_parsed).items():
-            if k not in ["conf_dir", "conf_file"] and v is not None:
-                overwrite_values[k] = v
-
+        overwrite_values = {
+            k: v
+            for k, v in vars(args_parsed).items()
+            if k not in ["conf_dir", "conf_file"] and v is not None
+        }
         # load args
         neox_args = cls.from_ymls(
             paths_to_yml_files=conf_files, overwrite_values=overwrite_values
@@ -351,7 +348,7 @@ class NeoXArgs(*BASE_CLASSES):
             # concat the wandb group name with a uid to make sure it's unique
             import wandb
 
-            neox_args.wandb_group += "_" + wandb.util.generate_id()
+            neox_args.wandb_group += f"_{wandb.util.generate_id()}"
         neox_args.print()
 
         return neox_args
@@ -386,17 +383,12 @@ class NeoXArgs(*BASE_CLASSES):
     @staticmethod
     def convert_key_value_to_command_line_arg(k, v):
         if isinstance(v, bool):
-            if v:
-                return [f"--{k}"]
-            else:
-                return []
-        if v is None:
-            return []
-        return [f"--{k}", str(v)]
+            return [f"--{k}"] if v else []
+        return [] if v is None else [f"--{k}", str(v)]
 
     def get_deepspeed_main_args(self):
 
-        args_list = list()
+        args_list = []
 
         # get deepspeed runner args, and only pass them in to deepspeed launcher if they differ from defaults
         for key, default_value in NeoXArgsDeepspeedRunner().defaults():
@@ -432,15 +424,8 @@ class NeoXArgs(*BASE_CLASSES):
             args_list.pop(idx)
             args_list.pop(idx)
 
-        # add user script
-        args_list.append(self.user_script)
-
-        # get deepspeed_config
-        args_list.append("--deepspeed_config")
-        args_list.append(json.dumps(self.deepspeed_config))
-
-        # get all config values
-        args_list.append("--megatron_config")
+        args_list.extend((self.user_script, "--deepspeed_config"))
+        args_list.extend((json.dumps(self.deepspeed_config), "--megatron_config"))
         neox_args = self.get_parent_class_value_dict(
             *self.__class__.__bases__, only_non_defaults=True
         )
@@ -488,7 +473,7 @@ class NeoXArgs(*BASE_CLASSES):
         takes a sequence of parent classes and returns corresponding values (with defaults set)
         """
         # TODO no Nones or non-defaults
-        result = dict()
+        result = {}
         for parent in parent_classes:
             for key, default_value in parent().defaults():
                 if key in ["tokenizer", "tensorboard_writer", "adlr_autoresume_object"]:
@@ -523,39 +508,40 @@ class NeoXArgs(*BASE_CLASSES):
             os.makedirs(self.log_dir, exist_ok=True)
             hostname = gethostname()
             file_prefix = os.path.join(self.log_dir, hostname)
-            Tee(file_prefix + "_stdout.txt", err=False)
-            Tee(file_prefix + "_stderr.txt", err=True)
+            Tee(f"{file_prefix}_stdout.txt", err=False)
+            Tee(f"{file_prefix}_stderr.txt", err=True)
 
     def print(self):
         """Print arguments."""
-        if self.rank == 0 or self.rank is None:
-            print("-------------------- arguments --------------------", flush=True)
-            str_list = []
-            for arg in vars(self):
-                # add arg + value
-                dots = "." * (32 - len(arg))
-                value = getattr(self, arg)
-                print_str = "  {} {} {}".format(arg, dots, value)
+        if self.rank != 0 and self.rank is not None:
+            return
+        print("-------------------- arguments --------------------", flush=True)
+        str_list = []
+        for arg in vars(self):
+            # add arg + value
+            dots = "." * (32 - len(arg))
+            value = getattr(self, arg)
+            print_str = f"  {arg} {dots} {value}"
 
-                # add info 'default or updated'
-                field_def = self.__dataclass_fields__.get(arg)
-                if field_def is not None:
-                    default_info = (
-                        "default" if value == field_def.default else "updated"
-                    )
-                else:
-                    default_info = ""
-                dots = "." * (64 - len(print_str))
-                print_str += dots
-                str_list.append({"print_str": print_str, "default_info": default_info})
+            # add info 'default or updated'
+            field_def = self.__dataclass_fields__.get(arg)
+            if field_def is not None:
+                default_info = (
+                    "default" if value == field_def.default else "updated"
+                )
+            else:
+                default_info = ""
+            dots = "." * (64 - len(print_str))
+            print_str += dots
+            str_list.append({"print_str": print_str, "default_info": default_info})
 
-            for arg in sorted(
-                sorted(str_list, key=lambda x: x["print_str"].lower()),
-                key=lambda x: x["default_info"],
-                reverse=True,
-            ):
-                print(arg["print_str"] + arg["default_info"], flush=True)
-            print("---------------- end of arguments ----------------", flush=True)
+        for arg in sorted(
+            sorted(str_list, key=lambda x: x["print_str"].lower()),
+            key=lambda x: x["default_info"],
+            reverse=True,
+        ):
+            print(arg["print_str"] + arg["default_info"], flush=True)
+        print("---------------- end of arguments ----------------", flush=True)
 
     ############################################################################################################################
     # start of calculations and derived values
@@ -580,10 +566,7 @@ class NeoXArgs(*BASE_CLASSES):
 
         if self.rank == 0:
             print(
-                self.__class__.__name__
-                + ".configure_distributed_args() using world size: {} and model-parallel size: {} ".format(
-                    self.world_size, self.model_parallel_size
-                ),
+                f"{self.__class__.__name__}.configure_distributed_args() using world size: {self.world_size} and model-parallel size: {self.model_parallel_size} ",
                 flush=True,
             )
 

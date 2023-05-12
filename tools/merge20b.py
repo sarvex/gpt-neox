@@ -81,16 +81,16 @@ def merge_model_weights(input_checkpoint_path, output_checkpoint_path):
         loaded_tp1 = torch.load(os.path.join(input_checkpoint_path, filename_tp1))
         loaded_tp2 = torch.load(os.path.join(input_checkpoint_path, filename_tp2))
         # noinspection PyDictCreation
-        merged = {}
+        merged = {
+            "mlp.dense_4h_to_h.weight": torch.cat(
+                [
+                    loaded_tp1["mlp.dense_4h_to_h.weight"],
+                    loaded_tp2["mlp.dense_4h_to_h.weight"],
+                ],
+                dim=1,
+            )
+        }
 
-        # RowParallelLinear
-        merged["mlp.dense_4h_to_h.weight"] = torch.cat(
-            [
-                loaded_tp1["mlp.dense_4h_to_h.weight"],
-                loaded_tp2["mlp.dense_4h_to_h.weight"],
-            ],
-            dim=1,
-        )
         merged["attention.dense.weight"] = torch.cat(
             [
                 loaded_tp1["attention.dense.weight"],
@@ -162,7 +162,7 @@ def merge_model_weights(input_checkpoint_path, output_checkpoint_path):
         pbar.update(1)
 
     # Load input embedding
-    pbar.set_description(f"Merging input embedding")
+    pbar.set_description("Merging input embedding")
     loaded_tp1 = torch.load(
         os.path.join(input_checkpoint_path, "layer_00-model_00-model_states.pt")
     )
@@ -187,7 +187,7 @@ def merge_model_weights(input_checkpoint_path, output_checkpoint_path):
     pbar.update(1)
 
     # Load final layer norm
-    pbar.set_description(f"Merging final layer norm")
+    pbar.set_description("Merging final layer norm")
     loaded_tp1 = torch.load(
         os.path.join(input_checkpoint_path, "layer_47-model_00-model_states.pt")
     )
@@ -207,7 +207,7 @@ def merge_model_weights(input_checkpoint_path, output_checkpoint_path):
     pbar.update(1)
 
     # Load output embedding
-    pbar.set_description(f"Merging output embedding")
+    pbar.set_description("Merging output embedding")
     loaded_tp1 = torch.load(
         os.path.join(input_checkpoint_path, "layer_48-model_00-model_states.pt")
     )

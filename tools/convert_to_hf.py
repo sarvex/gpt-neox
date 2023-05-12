@@ -44,7 +44,7 @@ def load_partitions(
 ) -> list[torch.Tensor]:
     """Returns a list containing all weights in a given layer from a model (across MP partitions)"""
 
-    loaded_tp_ranks = [
+    return [
         torch.load(
             os.path.join(
                 input_checkpoint_path,
@@ -53,8 +53,6 @@ def load_partitions(
         )
         for i in range(mp_partitions)
     ]
-
-    return loaded_tp_ranks
 
 
 def get_key(loaded_config, key, default=None):
@@ -101,18 +99,14 @@ def create_config(neox_config):
             1  # pad defaulting to 1. follows convention from GPT-NeoX-20b tokenizer
         )
 
-    # TODO: change the default value here based on discussion regarding `gpt_j_tied` config parameter's default
-    use_tied_lns = get_key(neox_config, "gpt-j-tied", False)
-
-    if use_tied_lns:
+    if use_tied_lns := get_key(neox_config, "gpt-j-tied", False):
         raise NotImplementedError(
             """ERROR: Huggingface Transformers does not yet support a single shared layernorm
                 per transformer block for GPT-NeoX models trained  w/ GPT-J parallel residuals.
                 See https://github.com/EleutherAI/gpt-neox/pull/481 for further details."""
         )
 
-    # set all config values.
-    hf_config = GPTNeoXConfig(
+    return GPTNeoXConfig(
         vocab_size=args.padded_vocab_size,
         hidden_size=get_key(neox_config, "hidden-size"),
         num_hidden_layers=get_key(neox_config, "num-layers"),
@@ -121,16 +115,19 @@ def create_config(neox_config):
         hidden_act=get_key(neox_config, "activation", default="gelu"),
         rotary_pct=get_key(neox_config, "rotary-pct", default=1.0),
         rotary_emb_base=get_key(neox_config, "rotary-emb-base", default=10000),
-        max_position_embeddings=get_key(neox_config, "max-position-embeddings"),
+        max_position_embeddings=get_key(
+            neox_config, "max-position-embeddings"
+        ),
         initializer_range=get_key(neox_config, "init-method-std", 0.02),
         layer_norm_eps=get_key(neox_config, "layernorm-epsilon", 1e-5),
         use_cache=True,
         bos_token_id=tokenizer.eod,
         eos_token_id=tokenizer.eod,
-        tie_word_embeddings=(not get_key(neox_config, "no-weight-tying", False)),
+        tie_word_embeddings=(
+            not get_key(neox_config, "no-weight-tying", False)
+        ),
         use_parallel_residual=get_key(neox_config, "gpt-j-residual", False),
     )
-    return hf_config
 
 
 def convert(input_checkpoint_path, loaded_config, output_checkpoint_path):
@@ -174,13 +171,13 @@ def convert(input_checkpoint_path, loaded_config, output_checkpoint_path):
             input_checkpoint_path, mp_partitions, layer_i + 2
         )
 
-        state_dict = {}
-        for key in [
-            "attention.dense.weight",
-            "mlp.dense_4h_to_h.weight",
-        ]:
-            state_dict[key] = torch.cat([t[key] for t in loaded_tp_ranks], dim=1)
-
+        state_dict = {
+            key: torch.cat([t[key] for t in loaded_tp_ranks], dim=1)
+            for key in [
+                "attention.dense.weight",
+                "mlp.dense_4h_to_h.weight",
+            ]
+        }
         # average layernorm stats over mp ranks
         for key in [
             "input_layernorm.weight",
@@ -188,7 +185,7 @@ def convert(input_checkpoint_path, loaded_config, output_checkpoint_path):
             "post_attention_layernorm.weight",
             "post_attention_layernorm.bias",
         ]:
-            state_dict[key] = (sum([t[key] for t in loaded_tp_ranks])) / len(
+            state_dict[key] = sum(t[key] for t in loaded_tp_ranks) / len(
                 loaded_tp_ranks
             )
 
@@ -206,7 +203,7 @@ def convert(input_checkpoint_path, loaded_config, output_checkpoint_path):
             "mlp.dense_4h_to_h.bias",
             "attention.dense.bias",
         ]:
-            state_dict[key] = sum([t[key] for t in loaded_tp_ranks])
+            state_dict[key] = sum(t[key] for t in loaded_tp_ranks)
 
         # Just take one
         state_dict["attention.rotary_emb.inv_freq"] = loaded_tp_ranks[0][
@@ -227,10 +224,14 @@ def convert(input_checkpoint_path, loaded_config, output_checkpoint_path):
 
     hf_model.gpt_neox.final_layer_norm.load_state_dict(
         {
-            "weight": (sum([t["norm.weight"] for t in loaded_tp_ranks]))
-            / len(loaded_tp_ranks),
-            "bias": (sum([t["norm.bias"] for t in loaded_tp_ranks]))
-            / len(loaded_tp_ranks),
+            "weight": (
+                sum(t["norm.weight"] for t in loaded_tp_ranks)
+                / len(loaded_tp_ranks)
+            ),
+            "bias": (
+                sum(t["norm.bias"] for t in loaded_tp_ranks)
+                / len(loaded_tp_ranks)
+            ),
         }
     )
     del loaded_tp_ranks

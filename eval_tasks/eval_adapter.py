@@ -157,11 +157,7 @@ class EvalHarnessAdapter(GPT2LM):
                 stop_tokens=stop_tokens,
                 recompute=self.neox_args.recompute,
             )
-            if cont:
-                s = cont[0]["text"] or ""
-            else:
-                s = ""
-
+            s = cont[0]["text"] or "" if cont else ""
             for term in until:
                 s = s.split(term)[0]
 
@@ -416,7 +412,7 @@ class EvalHarnessAdapter(GPT2LM):
         if use_cache:
             # TODO(jon-tow): Append a subset of `neox_args` to the cache database
             # name arg to distinguish model runs that use different configurations.
-            lm = base.CachingLM(lm, "lm_cache/" + name + ".db")
+            lm = base.CachingLM(lm, f"lm_cache/{name}.db")
 
         results = evaluator.evaluate(
             lm=lm,

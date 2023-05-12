@@ -643,28 +643,27 @@ class ParallelTransformerLayer(nn.Module):
 
     def _get_bias_dropout(self):
         if self.bias_dropout_fusion:
-            fn = (
+            return (
                 bias_dropout_add_fused_train
                 if self.training
                 else bias_dropout_add_fused_inference
             )
         else:
-            fn = get_bias_dropout_add(self.training)
-        return fn
+            return get_bias_dropout_add(self.training)
 
     def forward(self, x, attention_mask, layer_past=None):
         layer_past = layer_past if layer_past is not None else self.layer_past
         bias_dropout_fn = self._get_bias_dropout()
+        # pseudocode:
+        # x = x + attn(ln(x)) + mlp(ln(x))
+        # this means we can avoid doing the allreduce in the attn / mlp outputs
+        # to save communication time (we can do a single allreduce after we add mlp / attn outputs).
+        # due to a bug, the two layernorms are not tied in GPT-NeoX-20B. This is non-desirable, but
+        # we preserve the functionality for backwards compatibility
+
+        residual = x
         # x: [b, s, h]
         if self.gpt_j_residual:
-            # pseudocode:
-            # x = x + attn(ln(x)) + mlp(ln(x))
-            # this means we can avoid doing the allreduce in the attn / mlp outputs
-            # to save communication time (we can do a single allreduce after we add mlp / attn outputs).
-            # due to a bug, the two layernorms are not tied in GPT-NeoX-20B. This is non-desirable, but
-            # we preserve the functionality for backwards compatibility
-
-            residual = x
             # applies the correct normalization depending on if the norms are tied
             if self.gpt_j_tied:
                 x = self.input_layernorm(x)
@@ -701,12 +700,6 @@ class ParallelTransformerLayer(nn.Module):
             # output = (x + attn(ln(x)) + mlp(ln(x))
             output = residual + self.reduce(output)
         else:
-            # pseudocode:
-            # x = x + attn(ln1(x))
-            # x = x + mlp(ln2(x))
-
-            residual = x
-
             # x = x + attn(ln1(x))
             attention_output, attention_bias = self.attention(
                 self.input_layernorm(x), attention_mask, layer_past=layer_past

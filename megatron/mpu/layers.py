@@ -87,9 +87,7 @@ def _initialize_affine_weight_cpu(
 
     with torch.no_grad():
         torch.cat(my_weight_list, dim=partition_dim, out=weight)
-    if return_master_weight:
-        return master_weight
-    return None
+    return master_weight if return_master_weight else None
 
 
 class VocabParallelEmbedding(torch.nn.Module):
@@ -184,9 +182,7 @@ class VocabParallelEmbedding(torch.nn.Module):
         # Mask the output embedding.
         if self.model_parallel_size > 1:
             output_parallel[input_mask, :] = 0.0
-        # Reduce across all the model parallel GPUs.
-        output = reduce_from_model_parallel_region(output_parallel)
-        return output
+        return reduce_from_model_parallel_region(output_parallel)
 
 
 class ParallelRelativePositionBias(torch.nn.Module):

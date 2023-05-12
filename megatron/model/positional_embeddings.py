@@ -123,14 +123,13 @@ class AliBi(torch.nn.Module):
 
         if math.log2(n).is_integer():
             return get_slopes_power_of_2(n)
-        else:
-            closest_power_of_2 = 2 ** math.floor(math.log2(n))
-            return (
-                get_slopes_power_of_2(closest_power_of_2)
-                + self._get_slopes(2 * closest_power_of_2)[0::2][
-                    : n - closest_power_of_2
-                ]
-            )
+        closest_power_of_2 = 2 ** math.floor(math.log2(n))
+        return (
+            get_slopes_power_of_2(closest_power_of_2)
+            + self._get_slopes(2 * closest_power_of_2)[::2][
+                : n - closest_power_of_2
+            ]
+        )
 
     def forward(self, x):
         # [b, np, sq, sk]

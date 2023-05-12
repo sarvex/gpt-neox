@@ -176,9 +176,10 @@ def recursive_setattr(m, attr, value, assert_type=None, type_filter=None):
         for i in m:
             recursive_setattr(i, attr, value, assert_type, type_filter)
     elif isinstance(m, torch.nn.Module):
-        if hasattr(m, attr):
-            if type_filter is None or isinstance(m, type_filter):
-                setattr(m, attr, value)
+        if hasattr(m, attr) and (
+            type_filter is None or isinstance(m, type_filter)
+        ):
+            setattr(m, attr, value)
         if hasattr(m, "children"):
             recursive_setattr(m.children(), attr, value, assert_type, type_filter)
 

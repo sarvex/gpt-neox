@@ -63,14 +63,14 @@ def pretty_print(contents: dict):
         if isinstance(v, dict):
             pretty_print(v)
         elif isinstance(v, PRIMITIVE_TYPES):
-            line += f" = "
+            line += " = "
             line += f"{COLORS.CYAN}{repr(v)}{COLORS.END}"
         elif isinstance(v, Sequence):
             line += ", "
             line += f"{COLORS.CYAN}len={len(v)}{COLORS.END}"
         elif isinstance(v, torch.Tensor):
             if v.ndimension() in (0, 1) and v.numel() == 1:
-                line += f" = "
+                line += " = "
                 line += f"{COLORS.CYAN}{v.item()}{COLORS.END}"
             else:
                 line += ", "
@@ -97,8 +97,8 @@ def pretty_print_double(contents1: dict, contents2: dict, args):
         max(len(str(k)) for k in contents1), max(len(str(k)) for k in contents2)
     )
     common_keys = list(contents1.keys() & contents2.keys())
-    uncommon_keys_1 = [i for i in contents2.keys() if i not in common_keys]
-    uncommon_keys_2 = [i for i in contents1.keys() if i not in common_keys]
+    uncommon_keys_1 = [i for i in contents2 if i not in common_keys]
+    uncommon_keys_2 = [i for i in contents1 if i not in common_keys]
     diffs_found = False
     if uncommon_keys_1 + uncommon_keys_2:
         diffs_found = True
@@ -125,12 +125,12 @@ def pretty_print_double(contents1: dict, contents2: dict, args):
         elif isinstance(v1, PRIMITIVE_TYPES):
             if repr(v1) != repr(v2):
                 c = COLORS.RED
-                line += f" = "
+                line += " = "
                 line += f"{c}{repr(v1)} | {repr(v2)}{COLORS.END}"
             else:
                 c = COLORS.CYAN
                 if not args.diff:
-                    line += f" = "
+                    line += " = "
                     line += f"{c}{repr(v1)} | {repr(v2)}{COLORS.END}"
         elif isinstance(v1, Sequence):
             if len(v1) != len(v2):
@@ -143,16 +143,12 @@ def pretty_print_double(contents1: dict, contents2: dict, args):
                     line += ", "
                     line += f"{c}len={len(v1)} | len={len(v2)}{COLORS.END}"
         elif isinstance(v1, torch.Tensor):
-            if v1.ndimension() != v2.ndimension():
-                c = COLORS.RED
-            else:
-                c = COLORS.CYAN
-
+            c = COLORS.RED if v1.ndimension() != v2.ndimension() else COLORS.CYAN
             if (v1.ndimension() in (0, 1) and v1.numel() == 1) and (
                 v2.ndimension() in (0, 1) and v2.numel() == 1
             ):
                 if not args.diff:
-                    line += f" = "
+                    line += " = "
                     line += f"{c}{v1.item()} | {c}{v2.item()}{COLORS.END}"
             else:
                 if list(v1.shape) != list(v2.shape):
@@ -184,11 +180,8 @@ def pretty_print_double(contents1: dict, contents2: dict, args):
             line = prefix + line
             print(line)
             diffs_found = True
-    if args.diff and not diffs_found:
-        pass
-    else:
-        if not args.diff:
-            print("\n")
+    if not args.diff:
+        print("\n")
 
     return diffs_found
 
@@ -196,9 +189,7 @@ def pretty_print_double(contents1: dict, contents2: dict, args):
 def get_attribute(obj: object, name: str) -> object:
     if isinstance(obj, Mapping):
         return obj[name]
-    if isinstance(obj, Namespace):
-        return obj.name
-    return getattr(object, name)
+    return obj.name if isinstance(obj, Namespace) else getattr(object, name)
 
 
 def get_files(pth):
@@ -220,14 +211,14 @@ def peek(args: Namespace):
         file = Path(file).absolute()
         print(f"{COLORS.GREEN}{file.name}:{COLORS.END}")
         ckpt = torch.load(file, map_location=torch.device("cpu"))
-        selection = dict()
+        selection = {}
         attribute_names = args.attributes or list(ckpt.keys())
         for name in attribute_names:
             parts = name.split("/")
             current = ckpt
             for part in parts:
                 current = get_attribute(current, part)
-            selection.update({name: current})
+            selection[name] = current
         pretty_print(selection)
         print("\n")
 
@@ -251,14 +242,14 @@ def get_shared_fnames(files_1, files_2):
 
 def get_selection(filename, args):
     ckpt = torch.load(filename, map_location=torch.device("cpu"))
-    selection = dict()
+    selection = {}
     attribute_names = args.attributes or list(ckpt.keys())
     for name in attribute_names:
         parts = name.split("/")
         current = ckpt
         for part in parts:
             current = get_attribute(current, part)
-        selection.update({name: current})
+        selection[name] = current
     return selection
 
 

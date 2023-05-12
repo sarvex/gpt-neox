@@ -31,28 +31,26 @@ def test_neoxargs_usage():
     neox_args_attributes = set(NeoXArgs.__dataclass_fields__.keys())
 
     # we exclude a number of properties (implemented with the @property decorator) or functions that we know exists
-    exclude = set(
-        [
-            "params_dtype",
-            "deepspeed_config",
-            "get",
-            "pop",
-            "get_deepspeed_main_args",
-            'optimizer["params"]',
-            "attention_config[layer_number]",
-            "adlr_autoresume_object",
-            "update_value",
-            "all_config",
-            "tensorboard_writer",
-            "tokenizer",
-            "train_batch_size]",
-            "items",
-            "configure_distributed_args",
-            "build_tokenizer",
-            "attention_config[i]",
-            "print",
-        ]
-    )
+    exclude = {
+        "params_dtype",
+        "deepspeed_config",
+        "get",
+        "pop",
+        "get_deepspeed_main_args",
+        'optimizer["params"]',
+        "attention_config[layer_number]",
+        "adlr_autoresume_object",
+        "update_value",
+        "all_config",
+        "tensorboard_writer",
+        "tokenizer",
+        "train_batch_size]",
+        "items",
+        "configure_distributed_args",
+        "build_tokenizer",
+        "attention_config[i]",
+        "print",
+    }
 
     # test file by file
     for filename in (get_root_directory() / "megatron").glob("**/*.py"):
@@ -67,7 +65,7 @@ def test_neoxargs_usage():
         matches = list(
             re.findall(r"(?<=args\.).{2,}?(?=[\s\n(){}+-/*;:,=,[,\]])", file_contents)
         )
-        if len(matches) == 0:
+        if not matches:
             continue
 
         # compare

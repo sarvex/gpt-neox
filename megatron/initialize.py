@@ -156,8 +156,8 @@ def _initialize_distributed(neox_args):
         )
 
     # Setup 3D topology.
-    pp = neox_args.pipe_parallel_size if neox_args.pipe_parallel_size >= 1 else 1
-    mp = neox_args.model_parallel_size if neox_args.model_parallel_size >= 1 else 1
+    pp = max(neox_args.pipe_parallel_size, 1)
+    mp = max(neox_args.model_parallel_size, 1)
     assert (
         neox_args.world_size % (pp * mp) == 0
     ), f"world_size={neox_args.world_size}, pp={pp}, mp={mp}"
@@ -215,14 +215,13 @@ def _init_autoresume(neox_args):
 
 def _set_random_seed(seed):
     """Set random seed for reproducibility."""
-    if seed is not None and seed > 0:
-        random.seed(seed)
-        np.random.seed(seed)
-        torch.manual_seed(seed)
-        if torch.cuda.device_count() > 0:
-            mpu.model_parallel_cuda_manual_seed(seed)
-    else:
-        raise ValueError("Seed ({}) should be a positive integer.".format(seed))
+    if seed is None or seed <= 0:
+        raise ValueError(f"Seed ({seed}) should be a positive integer.")
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.device_count() > 0:
+        mpu.model_parallel_cuda_manual_seed(seed)
 
 
 def _write_args_to_tensorboard(neox_args):

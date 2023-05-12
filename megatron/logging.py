@@ -77,13 +77,12 @@ def get_flops(neox_args, model, iter_time_s):
     world_size = torch.distributed.get_world_size()
     ff = model.total_params * 6
     attn = neox_args.seq_length * neox_args.hidden_size * neox_args.num_layers * 60
-    flops = (
+    return (
         neox_args.train_batch_size
         * neox_args.seq_length
         * (ff + attn)
         / (iter_time_s * world_size)
     )
-    return flops
 
 
 def training_log(
@@ -149,22 +148,25 @@ def training_log(
         # with pipeline parallel, the megatron timers are overridden by the deepspeed ones.
         # Try to grab timer values from model engine. Only recently added to deeperspeed, so check that the engine
         # has that attribute first
-        if hasattr(model, "timer_values") and model.timer_values is not None:
-            if (
+        if (
+            hasattr(model, "timer_values")
+            and model.timer_values is not None
+            and (
                 model.wall_clock_breakdown()
                 and model.global_steps % model.steps_per_print() == 0
-            ):
-                timer_values = model.timer_values
-                # deepspeed already logs to tensorboard / prints values, so just log to wandb
-                if neox_args.use_wandb and torch.distributed.get_rank() == 0:
-                    for key in timer_values:
-                        tb_wandb_log(
-                            f"timers/{key}",
-                            timer_values[key],
-                            iteration,
-                            use_wandb=neox_args.use_wandb,
-                            tensorboard_writer=neox_args.tensorboard_writer,
-                        )
+            )
+        ):
+            timer_values = model.timer_values
+            # deepspeed already logs to tensorboard / prints values, so just log to wandb
+            if neox_args.use_wandb and torch.distributed.get_rank() == 0:
+                for key in timer_values:
+                    tb_wandb_log(
+                        f"timers/{key}",
+                        timer_values[key],
+                        iteration,
+                        use_wandb=neox_args.use_wandb,
+                        tensorboard_writer=neox_args.tensorboard_writer,
+                    )
 
     # write losses, lr, etc. every step
     tb_wandb_log(
@@ -184,7 +186,7 @@ def training_log(
         )
     if neox_args.fp16:
         tb_wandb_log(
-            f"train/loss_scale",
+            "train/loss_scale",
             loss_scale,
             iteration,
             use_wandb=neox_args.use_wandb,
@@ -192,15 +194,17 @@ def training_log(
         )
 
     # log gradient noise scale
-    if neox_args.log_gradient_noise_scale:
-        if noise_scale_logger.noise_scale is not None:
-            tb_wandb_log(
-                f"train/noise_scale",
-                noise_scale_logger.noise_scale,
-                iteration,
-                use_wandb=neox_args.use_wandb,
-                tensorboard_writer=neox_args.tensorboard_writer,
-            )
+    if (
+        neox_args.log_gradient_noise_scale
+        and noise_scale_logger.noise_scale is not None
+    ):
+        tb_wandb_log(
+            "train/noise_scale",
+            noise_scale_logger.noise_scale,
+            iteration,
+            use_wandb=neox_args.use_wandb,
+            tensorboard_writer=neox_args.tensorboard_writer,
+        )
 
     # (optional) Log optimizer states to wandb / tb every step
     if neox_args.log_optimizer_states:
@@ -226,36 +230,34 @@ def training_log(
             model.store_gradients = True  # start storing gradients
 
         for i, (name, param) in enumerate(model.module.named_parameters()):
-            if neox_args.log_grad_pct_zeros:
-                if (
-                    hasattr(model, "stored_gradients")
-                    and model.stored_gradients is not None
-                ):
-                    grad = model.stored_gradients[i]
-                    if grad is not None:
-                        tb_wandb_log(
-                            f"pct_grad_zeros/{name}",
-                            (grad == 0).float().mean().item() * 100,
-                            iteration,
-                            use_wandb=neox_args.use_wandb,
-                            tensorboard_writer=neox_args.tensorboard_writer,
-                            all_ranks=True,
-                        )
-            if neox_args.log_grad_norm:
-                if (
-                    hasattr(model, "stored_gradients")
-                    and model.stored_gradients is not None
-                ):
-                    grad = model.stored_gradients[i]
-                    if grad is not None:
-                        tb_wandb_log(
-                            f"gradient_norms/{name}",
-                            torch.norm(grad),
-                            iteration,
-                            use_wandb=neox_args.use_wandb,
-                            tensorboard_writer=neox_args.tensorboard_writer,
-                            all_ranks=True,
-                        )
+            if neox_args.log_grad_pct_zeros and (
+                hasattr(model, "stored_gradients")
+                and model.stored_gradients is not None
+            ):
+                grad = model.stored_gradients[i]
+                if grad is not None:
+                    tb_wandb_log(
+                        f"pct_grad_zeros/{name}",
+                        (grad == 0).float().mean().item() * 100,
+                        iteration,
+                        use_wandb=neox_args.use_wandb,
+                        tensorboard_writer=neox_args.tensorboard_writer,
+                        all_ranks=True,
+                    )
+            if neox_args.log_grad_norm and (
+                hasattr(model, "stored_gradients")
+                and model.stored_gradients is not None
+            ):
+                grad = model.stored_gradients[i]
+                if grad is not None:
+                    tb_wandb_log(
+                        f"gradient_norms/{name}",
+                        torch.norm(grad),
+                        iteration,
+                        use_wandb=neox_args.use_wandb,
+                        tensorboard_writer=neox_args.tensorboard_writer,
+                        all_ranks=True,
+                    )
             if neox_args.log_param_norm:
                 tb_wandb_log(
                     f"parameter_norms/{name}",

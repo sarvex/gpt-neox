@@ -45,14 +45,19 @@ def get_args():
         "-d",
         "--data-dir",
         default=None,
-        help=f"Directory to which to download datasets / tokenizer "
-        f"files - defaults to ./data",
+        help='Directory to which to download datasets / tokenizer files - defaults to ./data',
     )
     parser.add_argument(
-        "-v", "--vocab-file", default=None, help=f"Tokenizer vocab file (if required)"
+        "-v",
+        "--vocab-file",
+        default=None,
+        help="Tokenizer vocab file (if required)",
     )
     parser.add_argument(
-        "-m", "--merge-file", default=None, help=f"Tokenizer merge file (if required)"
+        "-m",
+        "--merge-file",
+        default=None,
+        help="Tokenizer merge file (if required)",
     )
     return parser.parse_args()
 
